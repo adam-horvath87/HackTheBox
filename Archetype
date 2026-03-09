@@ -133,7 +133,7 @@ SQL (ARCHETYPE\sql_svc  dbo@master)>
 
 So we have a username and a password...Exit from SQL, and use evin-winrm again with the new credentials:
 ┌──(kali㉿kali)-[~/htb]
-└─$ evil-winrm -i 10.129.8.94 -u administrator -p 'MEGACORP_4dm1n!!'
+└─$ evil-winrm -i 10.129.*.* -u administrator -p 'MEGACORP_4dm1n!!'
                                         
 Evil-WinRM shell v3.7
                                         
